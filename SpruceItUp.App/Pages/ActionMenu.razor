@@ -1,0 +1,25 @@
+﻿@using SpruceItUp.Shared.Models
+@using Blazored.Modal.Services
+@using Blazored.Modal
+@inject HttpClient Http;
+<div class="long-press-menu">
+    <div @onclick="CreatePin">Report for Sprucing!</div>
+    <div style="border-left: thick groove white" @onclick="CloseCallback">
+        <ion-icon name="close" class="close-icon"></ion-icon>
+    </div>
+</div>
+@code
+{
+    [Parameter] public (double, double) Coords { get; set; }
+    [Parameter] public Func<Task> CloseCallback { get; set; }
+    [CascadingParameter] public IModalService Modal { get; set; }
+    private async Task CreatePin()
+    {
+        var parameters = new ModalParameters();
+        parameters.Add(nameof(PinCreate.Position), Coords);
+        ModalOptions options = new() { Class = "modal-create-pin" };
+        var modal = Modal.Show<PinCreate>("Report for Sprucing!", parameters, options);
+        var modalResult = await modal.Result;
+        if (!modalResult.Cancelled) await CloseCallback();
+    }
+}

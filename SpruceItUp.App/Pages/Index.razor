@@ -1,0 +1,184 @@
+﻿@page "/"
+@using SpruceItUp.Shared
+@using System.Web
+@using SpruceItUp.Shared.Models
+@using Microsoft.AspNetCore.SignalR.Client
+@using Newtonsoft.Json
+@inject IJSRuntime Js;
+@implements IPinClient
+@inject NavigationManager NavManager
+@inject HttpClient Http
+<LoginManager/>
+@if (_highlightedCoords != null)
+{
+    <ActionMenu Coords="@(((double, double))(_highlightedCoords.Lat, _highlightedCoords.Lon))" CloseCallback="@CloseActionMenu"/>
+}
+@if (_loc != null && _ids != null)
+{
+    <LocMenu Coords="@_loc" Ids="@_ids" CloseCallback="@CloseLocMenu"/>
+}
+<div style="position: absolute;right: 0;width: 75%; height:100%">
+    <MapComponent OnLocChangedAsync="@OnLocationChanged" OnLocSetAsync="@OnLocationSet" ViewLocDetailsCallback="@ViewLocDetails" ViewDetailsCallback="@ViewDetails" SelectLocCallback="@SelectLoc" OnLongPressAsync="@ShowLongPressMenu" />
+</div>
+<div style="position: absolute;left: 0; width: 30%; height:100%">
+    @if (future != null && past != null)
+    {
+        <SideBar Past="@past" Future="@future" Kind="@show"/>
+    }
+</div>
+@if (_details != null && pin)
+{
+    <BodyView Pin="@_currentPins[(Guid)_details]" CloseCallback="@CloseDetailsView"/>
+}
+@if (_details != null && !pin)
+{
+    <EventView Kind="@show" Loc="@_currentLocs[(Guid)_details]" UpdateCallback="@UpdateCallback" CloseCallback="@CloseDetailsView"/>
+}
+@code
+{
+    private HubConnection _pinHubConnection;
+    private Dictionary<Guid, Pin> _currentPins = new();
+    private Dictionary<Guid, Loc> _currentLocs = new();
+    private List<Loc> past = new();
+    private List<Loc> future = new();
+    private List<HashSet<Pin>> locs = new();
+    private Position _curPos;
+    private Guid? _details;
+    private Position? _highlightedCoords;
+    private double[][] _loc;
+    private string[] _ids;
+    private bool pin = false;
+    private bool show = false;
+    private async Task CloseActionMenu()
+    {
+        await Js.InvokeVoidAsync("removeLongPressIndicator");
+        _highlightedCoords = null;
+        StateHasChanged();
+    }
+    private async Task CloseLocMenu()
+    {
+        await Js.InvokeVoidAsync("removeLongPressIndicator");
+        _loc = null;
+        _ids = null;
+        StateHasChanged();
+    }
+    private async Task ShowLongPressMenu(double lat, double lon)
+    {
+        _highlightedCoords = new(lat, lon);
+        await _pinHubConnection.SendAsync("JoinSurroundingTiles", _highlightedCoords);
+        await Js.InvokeVoidAsync("placeLongPressIndicator", lat, lon);
+        StateHasChanged();
+    }
+    private async void UpdateCallback()
+    {
+        var locs = await Http.GetFromJsonAsync<Guid[]>("Account/Signups");
+        past = await Http.GetFromJsonAsync<List<Loc>>($"Pin/GetLocPast/{JsonConvert.SerializeObject(locs)}");
+        future = await Http.GetFromJsonAsync<List<Loc>>($"Pin/GetLocFuture/{JsonConvert.SerializeObject(locs)}");
+        List<Loc> past2 = past;
+        List<Loc> future2 = future;
+        past = null;
+        future = null;
+        StateHasChanged();
+        past = past2;
+        future = future2;
+        StateHasChanged();
+    }
+    private async Task ViewLocDetails(Guid id)
+    {
+        _details = null;
+        StateHasChanged();
+        pin = false;
+        _details = id;
+        StateHasChanged();
+    }
+    private async Task ViewDetails(Guid id)
+    {
+        _details = null;
+        StateHasChanged();
+        pin = true;
+        _details = id;
+        StateHasChanged();
+    }
+    public async Task SelectLoc(double[][] sent, string[] ids)
+    {
+        _loc = sent;
+        _ids = ids;
+        StateHasChanged();
+    }
+    private void CloseDetailsView()
+    {
+        _details = null;
+        StateHasChanged();
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        _pinHubConnection = new HubConnectionBuilder().WithUrl(Http.BaseAddress + "PinHub").Build();
+        await _pinHubConnection.StartAsync();
+        _pinHubConnection.On<Pin>(nameof(ReceivePin), ReceivePin);
+    }
+    private async Task OnLocationSet(double lat, double lon)
+    {
+        _curPos = new(lat, lon);
+        await _pinHubConnection.SendAsync("JoinSurroundingTiles", _curPos);
+        var kind = await Http.GetFromJsonAsync<int>("Account/UserType");
+        if (kind == 1) show = true;
+        else show = false;
+        var pins = await Http.GetFromJsonAsync<List<Pin>>("Pin/GetPins");
+        if (pins != null) foreach (var p in pins) await ReceivePin(p);
+        var locs = await Http.GetFromJsonAsync<List<Loc>>("Pin/GetLocs");
+        if (locs != null) foreach (var l in locs) await ReceiveLoc(l);
+        UpdateCallback();
+    }
+    protected async Task OnLocationChanged(double lat, double lon)
+    {
+        _curPos = new(lat, lon);
+        await _pinHubConnection.SendAsync("JoinSurroundingTiles", _curPos);
+    }
+    public async Task UpdateLocs(Pin pin)
+    {
+        var query = HttpUtility.ParseQueryString(String.Empty);
+        query["lat"] = pin.Lat.ToString();
+        query["lon"] = pin.Lon.ToString();
+        var nearby = await Http.GetFromJsonAsync<List<Pin>>($"Pin/GetSurrounding?{query}");
+        if (nearby != null)
+        {
+            if (nearby.Count > 3)
+            {
+                HashSet<Pin> add = new HashSet<Pin>(nearby);
+                locs.RemoveAll(x => x.IsSubsetOf(add));
+                bool issubset = false;
+                foreach (var n in locs) if (add.IsSubsetOf(n)) issubset = true;
+                if (!issubset) locs.Add(add);
+            }
+        }
+    }
+    public async Task ReceiveLoc(Loc loc)
+    {
+        if (loc.Expires > DateTime.UtcNow)
+        {
+            _currentLocs.Add(loc.Id, loc);
+            await Js.InvokeVoidAsync("placeLoc", loc);
+        }
+    }
+    public async Task ReceivePin(Pin pin)
+    {
+        if (pin.Expires > DateTime.UtcNow)
+        {
+            _currentPins.Add(pin.Id, pin);
+            await Js.InvokeVoidAsync("placePin", pin);
+            if (show)
+            {
+                var query = HttpUtility.ParseQueryString(String.Empty);
+                query["lat"] = pin.Lat.ToString();
+                query["lon"] = pin.Lon.ToString();
+                var nearby = await Http.GetFromJsonAsync<List<Pin>>($"Pin/GetSurrounding?{query}");
+                if (nearby != null)
+                {
+                    foreach (var p in nearby) await UpdateLocs(p);
+                    string nearlist = JsonConvert.SerializeObject(locs);
+                    await Js.InvokeVoidAsync("createLoc", nearlist);
+                }
+            }
+        }
+    }
+}

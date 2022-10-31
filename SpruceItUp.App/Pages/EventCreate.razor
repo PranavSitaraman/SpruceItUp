@@ -1,0 +1,100 @@
+﻿@using Newtonsoft.Json
+@using Blazored.Modal
+@using Blazored.Modal.Services
+@using System
+@using System.Collections.Generic
+@using System.IO
+@using System.Linq
+@using System.ComponentModel.DataAnnotations
+@using System.Net.Http.Headers
+@using System.Web
+@using System.Security.Claims
+@using System.Threading.Tasks
+@using FluentValidation.Results
+@using SpruceItUp.Shared
+@using SpruceItUp.Shared.Models
+@using SpruceItUp.Shared.Models.Validators
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.SignalR
+@using Microsoft.AspNetCore.SignalR.Client
+@using System.Text
+@inject NavigationManager NavigationManager;
+@inject HttpClient Http;
+@inject IJSRuntime Js;
+<EditForm Model="@_model" OnValidSubmit="@SubmitEvent">
+    <div>
+        <InputText style="font-family:'Courier New';font-weight:bold" placeholder="Title..." @bind-Value="@_model.Title"/>
+    </div>
+    <div>
+        <InputTextArea style="font-family:'Courier New';font-weight:bold" placeholder="Description..." @bind-Value="@_model.Description"/>
+    </div>
+    <div>
+        <label style="font-family:'Courier New';font-weight:bold">Date:</label>
+        <InputDate style="font-family:'Courier New';font-weight:bold" @bind-Value="_expiresdate" />
+    </div>
+    <div>
+        <label style="font-family:'Courier New';font-weight:bold">Time:</label>
+        <InputText type="time" style="font-family:'Courier New';font-weight:bold" @bind-Value="TimeProxy"/>
+    </div>
+    <div>
+        <label style="font-family:'Courier New';font-weight:bold">Type:</label>
+        <InputSelectEnum style="font-family:'Courier New';font-weight:bold" @bind-Value="_model.Kind"/>
+    </div>
+    <div>
+        <br />
+        <label class="file-upload" style="float:left;font-family:'Courier New';font-weight:bold">
+            Upload Image Here<InputFile OnChange="@OnFileChanged" />
+        </label>
+        <button type="submit" style="float:right;font-family:'Courier New';font-weight:bold">Post</button>
+        <br />
+        <br />
+    </div>
+</EditForm>
+@code
+{
+    private string TimeProxy
+    {
+        get => _expirestime.ToString();
+        set => TimeSpan.TryParse(value, out _expirestime);
+    }
+    [Parameter] public double[][] paths { get; set; }
+    [Parameter] public string[] ids { get; set; }
+    [CascadingParameter] BlazoredModalInstance ModalInstance { get; set; }
+    private DateTime _expiresdate = DateTime.Now.Date;
+    private TimeSpan _expirestime = DateTime.Now.TimeOfDay;
+    private Loc _model = new();
+    private IBrowserFile _image;
+    public async Task OnFileChanged(InputFileChangeEventArgs e)
+    {
+        _image = e.File;
+    }
+    private async Task<string> UploadImage()
+    {
+        var fileContent = new StreamContent(_image.OpenReadStream(8192000));
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(_image.ContentType);
+        var result = await Http.PostAsync("Pin/UploadImage", fileContent);
+        var fileUrl = await result.Content.ReadAsStringAsync();
+        return fileUrl;
+    }
+    private async Task SubmitEvent()
+    {
+        if (_image != null)
+        {
+            string imgUrl = await UploadImage();
+            _model.Image = Http.BaseAddress + imgUrl;
+        }
+        _model.Created = DateTime.UtcNow;
+        _model.Expires = (_expiresdate + _expirestime).ToUniversalTime();
+        _model.Lat = Enumerable.Range(0, paths.GetLength(0)).Select(x => paths[x][0]).ToArray();
+        _model.Lng = Enumerable.Range(0, paths.GetLength(0)).Select(x => paths[x][1]).ToArray();
+        _model.Pins = ids;
+        var result = await Http.PostAsJsonAsync("Pin/Event", _model);
+        var a = await result.Content.ReadAsStringAsync();
+        Guid? id = JsonConvert.DeserializeObject<Guid>(a);
+        await ModalInstance.CloseAsync(ModalResult.Ok("Submitted Successfully"));
+        var kind = await Http.GetFromJsonAsync<int>("Account/UserType");
+        if (kind == 1 && id != null) await Http.PostAsJsonAsync("Account/AddSignup", id);
+        _model = new();
+        NavigationManager.NavigateTo("/", forceLoad: true);
+    }
+}

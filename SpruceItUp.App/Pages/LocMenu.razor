@@ -1,0 +1,27 @@
+﻿@using SpruceItUp.Shared.Models
+@using Blazored.Modal.Services
+@using Blazored.Modal
+@inject HttpClient Http;
+<div class="long-press-menu">
+    <div @onclick="CreateLoc">Spruce It!</div>
+    <div style="border-left: thick groove white" @onclick="CloseCallback">
+        <ion-icon name="close" class="close-icon"></ion-icon>
+    </div>
+</div>
+@code
+{
+    [Parameter] public double[][] Coords { get; set; }
+    [Parameter] public string[] Ids { get; set; }
+    [Parameter] public Func<Task> CloseCallback { get; set; }
+    [CascadingParameter] public IModalService Modal { get; set; }
+    private async Task CreateLoc()
+    {
+        var parameters = new ModalParameters();
+        parameters.Add(nameof(EventCreate.paths), Coords);
+        parameters.Add(nameof(EventCreate.ids), Ids);
+        ModalOptions options = new() { Class = "modal-create-pin" };
+        var modal = Modal.Show<EventCreate>("Spruce It!", parameters, options);
+        var modalResult = await modal.Result;
+        if (!modalResult.Cancelled) await CloseCallback();
+    }
+}

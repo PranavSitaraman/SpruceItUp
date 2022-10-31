@@ -1,0 +1,12 @@
+﻿<p style="font-family:'Courier New';font-weight:normal;font-size:smaller"><b>@Title:&nbsp</b>@_text</p>
+@code
+{
+    [Parameter] public DateTime Date { get; set; }
+    [Parameter] public string Title { get; set; }
+    private string _text;
+    protected override async Task OnInitializedAsync()
+    {
+        Date = Date.ToLocalTime();
+        _text = Date.ToString("MM/dd/yyyy") + ", " + Date.ToString("hh:mm tt");
+    }
+}

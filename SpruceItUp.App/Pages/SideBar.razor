@@ -1,0 +1,43 @@
+﻿@inject IJSRuntime Js;
+@using System
+@using System.Text.Json
+@using SpruceItUp.Shared.Models
+<div style="height:100vh;border-top-right-radius:30px;background-color:#70e6a5;border-color:white;border-left-width:0px;border-bottom-width:0px;border-top-width:0px;border-right-width:thick;border-style:groove">
+<img src="/assets/icons/spruceitup.png" style="padding-top:5%;display: block;margin-left: auto; margin-right: auto;" width="60%" height="auto" />
+<div style="margin-left:10%;margin-right:10%;margin-bottom:5%;padding-left:5%;padding-right:5%;padding-bottom:5%;background-color:white;border-style:groove;border-radius:1vw">
+    @if (!Kind)
+    {
+        <h3 style="text-align:center;font-family:'Courier New';font-weight:bold">Your Event Sign Ups</h3>
+    }
+    else
+    {
+        <h3 style="text-align:center;font-family:'Courier New';font-weight:bold">Your Events Hosted</h3>
+    }
+    <hr />
+    <h4 style="font-family:'Courier New';font-weight:bolder">Upcoming</h4>
+    <div style="max-height: 12vh; overflow-y: scroll;">
+        @foreach (var a in Future)
+        {
+            <div style="font-family:'Courier New'">
+                <LocDisplay Title="@a.Title" Date="@a.Expires" />
+            </div>
+        }
+    </div>
+    <hr />
+    <h4 style="font-family:'Courier New';font-weight:bolder">Completed</h4>
+    <div style="max-height: 12vh; overflow-y: scroll;">
+        @foreach (var a in Past)
+        {
+            <div style="font-family:'Courier New'">
+                <LocDisplay Title="@a.Title" Date="@a.Expires" />
+            </div>
+        }
+    </div>
+    </div>
+</div>
+@code
+{
+    [Parameter] public List<Loc> Past { get; set; }
+    [Parameter] public List<Loc> Future { get; set; }
+    [Parameter] public bool Kind { get; set; }
+}

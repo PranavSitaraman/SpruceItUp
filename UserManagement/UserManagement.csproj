@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net5.0</TargetFramework>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="CryptoHelper" Version="3.0.2" />
+      <PackageReference Include="FluentValidation" Version="10.2.1" />
+      <PackageReference Include="linq2db.PostgreSQL" Version="3.3.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\SpruceItUp.Shared\SpruceItUp.Shared.csproj" />
+    </ItemGroup>
+
+</Project>
